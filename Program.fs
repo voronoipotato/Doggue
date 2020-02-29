@@ -4,16 +4,21 @@ open System
 open Elmish
 module Terminal = 
   type Msg = | ChangeValue of string
-  type Element = Dialog of string * ( string -> unit ) | Rogue of char * (char -> unit)
+  type Event = OnString of (string -> unit) | OnChar of (char -> unit)
+  
+  type Element = Dialog of string * Event | Rogue of string * (char -> unit)
 module Program =
   let withTerminal program: Program<_,_,_,_> =
     let setState model dispatch = 
       let el = (Program.view program) model dispatch
       match el with
-      | Terminal.Dialog (d, f) -> 
-        Console.WriteLine(d)
+      | Terminal.Dialog (t, Terminal.OnString f) -> 
+        Console.WriteLine(t)
         Console.ReadLine() |> f
-      | Terminal.Rogue (c, f) -> Console.ReadKey(true).KeyChar  |> f
+      | Terminal.Dialog (t, Terminal.OnChar f) -> 
+        Console.WriteLine(t)
+        Console.ReadKey(true).KeyChar |> f
+      | Terminal.Rogue (t, f) -> Console.ReadKey(true).KeyChar  |> f
       
       ()
     program |> Program.withSetState setState
@@ -32,7 +37,7 @@ let update (msg:Terminal.Msg) (model: Model) =
 let view model dispatch =
   //(Console.ReadKey(true)).KeyChar |> string |> Terminal.ChangeValue |> dispatch
   let s = (sprintf "Wow! %s" model.Value)
-  Terminal.Dialog ( s , Terminal.ChangeValue >> dispatch )// (fun i -> dispatch (Terminal.ChangeValue i)))
+  Terminal.Dialog ( s , Terminal.OnString (Terminal.ChangeValue >> dispatch) )// (fun i -> dispatch (Terminal.ChangeValue i)))
 
 
 [<EntryPoint>]
