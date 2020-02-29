@@ -4,24 +4,11 @@ open System
 open Elmish
 
 module Program =
-  type AppState = {
-    render : unit -> string
-    setState : AppState -> unit
-  }
-
-  let mutable appState = None
   let withConsole program: Program<_,_,_,_> =
     let setState model dispatch = 
-      let render _ = 
-        let (s: string) = (Program.view program) model dispatch
-        Console.WriteLine(s)
-        s
-
-      match appState with
-      | Some state -> state.setState {state with render = render}
-      | _ -> appState <- Some { render = render
-                                setState = ignore }
-      render () |> ignore
+      let (s: string) = (Program.view program) model dispatch
+      Console.WriteLine(s)
+      ()
     program |> Program.withSetState setState
 
 
@@ -36,7 +23,7 @@ let update (msg:Msg) (model: Model) =
     { Value = newValue}, Cmd.none
 
 let view model dispatch =
-  //ChangeValue "test" |> dispatch
+  ChangeValue "test" |> dispatch
   sprintf "Wow! %s" model.Value
 
 [<EntryPoint>]
