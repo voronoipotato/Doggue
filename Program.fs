@@ -50,10 +50,11 @@ module Game =
   type Image = char
   type Name = string
   type Description = string
+  type Carryable = Bauble of Image * Description
+
   type Entity =   
     | Item of Image * Description * Position
-    | Container of Image * Image list * Position
-  type Carryable = Bauble of Image * Description
+    | Container of Image * Carryable list * Position
   type Orientation = |North|East|West|South
   type Model = {  name : string; 
                   player : Position * Orientation; 
@@ -71,10 +72,10 @@ module Game =
   module Entity =
     let getImage = function
       | Item(i,_,_) ->  i
-      | Container (i ,l, p)-> i
+      | Container (i ,_ , _)-> i
   module Model = 
     let removeItem (m: Model) (p: Position)= 
-      let isItem = function | Item (i,d,p') -> p' <> p  | _ -> true
+      let isItem = function | Item (_,_,p') -> p' <> p  | _ -> true
       
       let filteredEntities = m.entities |> List.filter isItem 
       {m with entities = filteredEntities}
@@ -108,7 +109,7 @@ module Game =
           | Right -> Some East
           | _ -> None
 
-      let p,o =
+      let position,orientation =
         let p' = move keyEvent |> Option.defaultValue player
         let o' = reorient keyEvent |> Option.defaultValue orientation
         match level with 
@@ -116,35 +117,34 @@ module Game =
           { x = min w p'.x |> max 0; 
             y = min l p'.y |> max 0 }, o'
 
-      let updateInventory m = 
-        let tryGetItem e = 
+      let updateInventory model = 
+        let isItem e = 
           match e with
           | Item _ -> true
           | _ -> false
-        let checkpos = KeyEvent.fromOrientation >> move
-        let filterItem e = 
-          let checkPosition = checkpos o
+        let positionToCheck = KeyEvent.fromOrientation >> move
+        let itemInPosition e = 
+          let checkPosition = positionToCheck orientation
           match checkPosition, e with
           | Some x, Item (i,d,p) -> (x = p)
           | _  -> false
 
         let item = 
           entities
-          |> List.filter tryGetItem 
-          |> List.tryFind filterItem 
+          |> List.filter isItem 
+          |> List.tryFind itemInPosition 
         let pickUp = function
             | Item (i,d,p)-> 
-              let m' = {m with inventory = (Bauble (i,d)) :: inventory}
-              Model.removeItem m' p
-            | _ -> m
+              Model.removeItem {model with inventory = (Bauble (i,d)) :: inventory} p
+            | _ -> model
         match keyEvent with
         | Interact ->
           item 
           |> Option.map pickUp
-          |> Option.defaultValue m
-        | _ -> m
-      let model = updateInventory model
-      {model with player = p,o}, Cmd.none
+          |> Option.defaultValue model
+        | _ -> model
+      let updatedModel = updateInventory model
+      {updatedModel with player = position,orientation}, Cmd.none
 
     match msg with
     | Terminal.TextInput newValue ->
@@ -180,7 +180,7 @@ let view (model) dispatch =
     let character = Terminal.WriteAtPos("d", Game.toTerminalPosition pos, gameInput)
     let entitiesToRender = entities |> List.map (function | Game.Item (i,d,p) -> i,p | Game.Container (i,l,p) -> i,p)
     let items = entitiesToRender |> List.fold (fun acc (i,p)  -> Terminal.WriteAtPos(string i, Game.toTerminalPosition p,acc)) character
-    Terminal.Screen ("", items )
+    Terminal.Screen (".....\n.....\n.....\n.....\n.....\n.....", items )
   if model.name = "" then
     nameEntry
   else
