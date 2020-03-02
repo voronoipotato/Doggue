@@ -47,7 +47,6 @@ module Game =
   type Attr = 
     | Attr
   type Entity =   
-    | Start of Position
     | Item of Image * Description * Position
     | Container of Image * Image list * Position
 
@@ -65,7 +64,6 @@ module Game =
     | Interact
   module Entity =
     let getImage = function
-      | Start _ -> None
       | Item(i,_,_) -> Some i
       | Container (_ ,l, p)-> List.tryHead l
   module Model = 
@@ -151,7 +149,7 @@ module Game =
       | _ -> model , Cmd.none
 
 //Begin game
-//type Msg = | TextInput of string | Move of char | Interact
+
 type Model = Game.Model
 
 let bedroom = ("Bedroom", (5,5))
@@ -160,13 +158,6 @@ let init () = { Game.name = "";
                 Game.inventory = []; 
                 Game.level = bedroom;
                 Game.entities = [Game.Item ('s', "a sock", {x=0; y=0})]}, Cmd.none
-////not currently in use
-// let update' msg model = 
-//   match msg with
-//   | TextInput s -> (Terminal.TextInput s), model
-//   | Move c ->   (Terminal.GameInput c), model
-//   | Interact -> (Terminal.GameInput 'e'), model
-// let update msg model = update' msg model ||> Game.update
 
 let view (model) dispatch =
   let origin: Game.Position = {x = 0; y = 0}
