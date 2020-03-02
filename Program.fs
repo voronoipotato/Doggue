@@ -64,8 +64,8 @@ module Game =
     | Interact
   module Entity =
     let getImage = function
-      | Item(i,_,_) -> Some i
-      | Container (_ ,l, p)-> List.tryHead l
+      | Item(i,_,_) ->  i
+      | Container (i ,l, p)-> i
   module Model = 
     let removeItem (m: Model) (p: Position)= 
       let isItem f = function | Item (i,d,p) -> f p | _ -> false
@@ -115,23 +115,26 @@ module Game =
           match e with
           | Item _ -> true
           | _ -> false
-
+        let checkpos = KeyEvent.fromOrientation >> move
         let filterItem e = 
-          let checkPosition = KeyEvent.fromOrientation o |> move
+          let checkPosition = checkpos o
           match checkPosition, e with
           | Some x, Item (i,d,p) -> (x = p)
           | _  -> false
 
-        let item _ = 
+        let item = 
           entities
           |> List.filter tryGetItem 
           |> List.tryFind filterItem 
-          |> Option.bind Entity.getImage
 
         match keyEvent with
         | Interact ->
-          let m' = {m with inventory = Option.toList (item ()) @ inventory}
-          Model.removeItem m' p
+          item |> Option.map(fun item ->
+            match item with 
+            | Item (i,d,p)-> 
+              let m' = {m with inventory = (Entity.getImage item) :: inventory}
+              Model.removeItem m' p) |> Option.defaultValue m
+            | _ -> m
         | _ -> m
       let model = updateInventory model
       {model with player = p,o}, Cmd.none
