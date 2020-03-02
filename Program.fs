@@ -49,15 +49,14 @@ module Game =
   type Entity =   
     | Start of Position
     | Item of Image * Description * Position
-    | Room of Name * Dimensions * Entity list
-    | Container of Image * Image list
-    | Empty
+    | Container of Image * Image list * Position
 
   type Orientation = |North|East|West|South
   type Model = {  name : string; 
                   player : Position * Orientation; 
                   inventory: Image list; 
-                  level: Entity }
+                  level: Name * Dimensions;
+                  entities: Entity list}
   type KeyEvent = 
     | Up 
     | Down 
@@ -68,15 +67,13 @@ module Game =
     let getImage = function
       | Start _ -> None
       | Item(i,_,_) -> Some i
-      | Room _ -> None
-      | Container (_ ,l )-> List.tryHead l
-      | Empty -> None
-  // module Model = 
-  //   let removeEntity (m: Model) (p: Position)= 
-  //     match m.level with
-  //     | Room (n, d , es) ->
-  //       m
-  //     | _ -> m
+      | Container (_ ,l, p)-> List.tryHead l
+  module Model = 
+    let removeItem (m: Model) (p: Position)= 
+      let isItem f = function | Item (i,d,p) -> f p | _ -> false
+      let checkPosition p' = p' = p 
+      let filteredEntities = m.entities |> List.filter (isItem checkPosition) |> List.except m.entities
+      {m with entities = filteredEntities}
 
 
   module KeyEvent = 
@@ -89,7 +86,8 @@ module Game =
     let { name= name; 
           player = player, orientation; 
           inventory = inventory;
-          level = level} = model
+          level = level
+          entities = entities} = model
     let {x=x; y=y} = player
     let updateInteraction keyEvent =
       let move = function
@@ -107,42 +105,38 @@ module Game =
           | _ -> None
 
       let p,o =
-        let p = move keyEvent |> Option.defaultValue player
-        let o = reorient keyEvent |> Option.defaultValue orientation
-        p, o
-      let p',o' =
+        let p' = move keyEvent |> Option.defaultValue player
+        let o' = reorient keyEvent |> Option.defaultValue orientation
         match level with 
-        | Room (_, (w,l), _) -> 
-          { x = min w p.x |> max 0; 
-            y = min l p.y |> max 0 }, o
-        | _ -> p, o
+        | _ , (w,l) ->
+          { x = min w p'.x |> max 0; 
+            y = min l p'.y |> max 0 }, o'
 
-      let i = 
-        let rec tryGetItem e = 
+      let updateInventory m = 
+        let tryGetItem e = 
           match e with
-          | Start _ -> None
-          | Item (i,d,p) -> Some(Item(i,d,p))
-          | Room (_,_,l) ->
-            l |> List.choose tryGetItem 
-              |> List.tryHead
-          | Container _ -> None
-          | Empty -> None
+          | Item _ -> true
+          | _ -> false
+
         let filterItem e = 
           let checkPosition = KeyEvent.fromOrientation o |> move
           match checkPosition, e with
-          | Some x, Item (i,d,p) -> x = p
+          | Some x, Item (i,d,p) -> (x = p)
           | _  -> false
+
         let item _ = 
-          tryGetItem level
-          |> Option.filter filterItem 
+          entities
+          |> List.filter tryGetItem 
+          |> List.tryFind filterItem 
           |> Option.bind Entity.getImage
 
         match keyEvent with
         | Interact ->
-          //'s' :: inventory
-          Option.toList (item ()) @ inventory
-        | _ -> inventory
-      {model with player = p',o'; inventory = i}, Cmd.none
+          let m' = {m with inventory = Option.toList (item ()) @ inventory}
+          Model.removeItem m' p
+        | _ -> m
+      let model = updateInventory model
+      {model with player = p,o}, Cmd.none
 
     match msg with
     | Terminal.TextInput newValue ->
@@ -160,11 +154,12 @@ module Game =
 //type Msg = | TextInput of string | Move of char | Interact
 type Model = Game.Model
 
-let bedroom = Game.Room ("Bedroom", (5,5), [Game.Item ('s', "a sock", {x=0; y=0})])
+let bedroom = ("Bedroom", (5,5))
 let init () = { Game.name = ""; 
                 Game.player = {x = 0; y = 0}, Game.North; 
                 Game.inventory = []; 
-                Game.level = bedroom}, Cmd.none
+                Game.level = bedroom;
+                Game.entities = [Game.Item ('s', "a sock", {x=0; y=0})]}, Cmd.none
 ////not currently in use
 // let update' msg model = 
 //   match msg with
@@ -178,7 +173,6 @@ let view (model) dispatch =
   let { Game.name = name; Game.level = room; } = model
   //pomeranian service dog
   let doggo = "d"
-  //(Console.ReadKey(true)).KeyChar |> string |> Terminal.ChangeValue |> dispatch
   let nameEntry = Terminal.Dialog ("Enter your name:", Terminal.TextInput >> dispatch)
   let map = 
     let gameInput = Terminal.CharInput (Terminal.GameInput >> dispatch)
