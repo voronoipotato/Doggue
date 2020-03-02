@@ -171,15 +171,15 @@ let init () = { Game.name = "";
 
 let view (model) dispatch =
   let origin: Game.Position = {x = 0; y = 0}
-  let { Game.name = name; Game.player = pos, ori; Game.level = room; Game.entities = xs} = model
+  let { Game.name = name; Game.player = pos, ori; Game.level = room; Game.entities = entities} = model
   //pomeranian service dog
   let doggo = "d"
   let nameEntry = Terminal.Dialog ("Enter your name:", Terminal.TextInput >> dispatch)
   let map = 
     let gameInput =   Terminal.CharInput (Terminal.GameInput >> dispatch)
     let character = Terminal.WriteAtPos("d", Game.toTerminalPosition pos, gameInput)
-    let es = xs |> List.map (function | Game.Item (i,d,p) -> i,p | Game.Container (i,l,p) -> i,p)
-    let items = es |> List.fold (fun acc (i,p)  -> Terminal.WriteAtPos(string i, Game.toTerminalPosition p,acc)) character
+    let entitiesToRender = entities |> List.map (function | Game.Item (i,d,p) -> i,p | Game.Container (i,l,p) -> i,p)
+    let items = entitiesToRender |> List.fold (fun acc (i,p)  -> Terminal.WriteAtPos(string i, Game.toTerminalPosition p,acc)) character
     Terminal.Screen ("", items )
   if model.name = "" then
     nameEntry
