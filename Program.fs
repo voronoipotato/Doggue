@@ -16,6 +16,7 @@ module Terminal =
   type Element =  | Screen of Header * Element
                   | Dialog of Header * OnString
                   | CharInput of OnChar
+                  | WriteAtPos of string * Position * Element
 
 module Program =
   let withTerminal program: Program<_,_,_,_> =
@@ -28,6 +29,10 @@ module Program =
           Console.ReadLine() |> f
         | Terminal.CharInput (f) -> 
           Console.ReadKey(true).KeyChar |> f
+        | Terminal.WriteAtPos (s, p, el) ->
+          Console.SetCursorPosition(p.x,p.y)
+          Console.Write(s)
+          setState' el
         | Terminal.Screen (s, el) ->
           Console.Clear()
           Console.WriteLine(s)
@@ -40,20 +45,19 @@ module Game =
   type Width = int 
   type Length = int
   type Position = {x: int; y: int}
+  
   type Dimensions = Width * Length
   type Image = char
   type Name = string
   type Description = string
-  type Attr = 
-    | Attr
   type Entity =   
     | Item of Image * Description * Position
     | Container of Image * Image list * Position
-
+  type Carryable = Bauble of Image * Description
   type Orientation = |North|East|West|South
   type Model = {  name : string; 
                   player : Position * Orientation; 
-                  inventory: Image list; 
+                  inventory: Carryable list; 
                   level: Name * Dimensions;
                   entities: Entity list}
   type KeyEvent = 
@@ -62,15 +66,17 @@ module Game =
     | Left 
     | Right 
     | Interact
+  let toTerminalPosition p : Terminal.Position= 
+    {x=p.x; y=p.y}  
   module Entity =
     let getImage = function
       | Item(i,_,_) ->  i
       | Container (i ,l, p)-> i
   module Model = 
     let removeItem (m: Model) (p: Position)= 
-      let isItem f = function | Item (i,d,p) -> f p | _ -> false
-      let checkPosition p' = p' = p 
-      let filteredEntities = m.entities |> List.filter (isItem checkPosition) |> List.except m.entities
+      let isItem = function | Item (i,d,p') -> p' <> p  | _ -> true
+      
+      let filteredEntities = m.entities |> List.filter isItem 
       {m with entities = filteredEntities}
 
 
@@ -89,8 +95,8 @@ module Game =
     let {x=x; y=y} = player
     let updateInteraction keyEvent =
       let move = function
-        | Up ->   Some {player with y = y + 1}
-        | Down -> Some {player with y = y - 1}
+        | Up ->   Some {player with y = y - 1}
+        | Down -> Some {player with y = y + 1}
         | Left -> Some {player with x = x - 1}
         | Right ->Some {player with x = x + 1}
         | _ -> None
@@ -126,15 +132,16 @@ module Game =
           entities
           |> List.filter tryGetItem 
           |> List.tryFind filterItem 
-
+        let pickUp = function
+            | Item (i,d,p)-> 
+              let m' = {m with inventory = (Bauble (i,d)) :: inventory}
+              Model.removeItem m' p
+            | _ -> m
         match keyEvent with
         | Interact ->
-          item |> Option.map(fun item ->
-            match item with 
-            | Item (i,d,p)-> 
-              let m' = {m with inventory = (Entity.getImage item) :: inventory}
-              Model.removeItem m' p) |> Option.defaultValue m
-            | _ -> m
+          item 
+          |> Option.map pickUp
+          |> Option.defaultValue m
         | _ -> m
       let model = updateInventory model
       {model with player = p,o}, Cmd.none
@@ -160,19 +167,20 @@ let init () = { Game.name = "";
                 Game.player = {x = 0; y = 0}, Game.North; 
                 Game.inventory = []; 
                 Game.level = bedroom;
-                Game.entities = [Game.Item ('s', "a sock", {x=0; y=0})]}, Cmd.none
+                Game.entities = [Game.Item ('s', "a sock", {x=0; y=3}); Game.Container ('c', [], {x=1;y=1})]}, Cmd.none
 
 let view (model) dispatch =
   let origin: Game.Position = {x = 0; y = 0}
-  let { Game.name = name; Game.level = room; } = model
+  let { Game.name = name; Game.player = pos, ori; Game.level = room; Game.entities = xs} = model
   //pomeranian service dog
   let doggo = "d"
   let nameEntry = Terminal.Dialog ("Enter your name:", Terminal.TextInput >> dispatch)
   let map = 
-    let gameInput = Terminal.CharInput (Terminal.GameInput >> dispatch)
-    let playerPosition = (sprintf "Player Position %A" model)
-    Terminal.Screen (playerPosition, gameInput)
-  let prettyName = (sprintf "Your name is %A" name) 
+    let gameInput =   Terminal.CharInput (Terminal.GameInput >> dispatch)
+    let character = Terminal.WriteAtPos("d", Game.toTerminalPosition pos, gameInput)
+    let es = xs |> List.map (function | Game.Item (i,d,p) -> i,p | Game.Container (i,l,p) -> i,p)
+    let items = es |> List.fold (fun acc (i,p)  -> Terminal.WriteAtPos(string i, Game.toTerminalPosition p,acc)) character
+    Terminal.Screen ("", items )
   if model.name = "" then
     nameEntry
   else
