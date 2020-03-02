@@ -52,6 +52,7 @@ module Game =
     | Room of Name * Dimensions * Entity list
     | Container of Image * Image list
     | Empty
+
   type Orientation = |North|East|West|South
   type Model = {  name : string; 
                   player : Position * Orientation; 
@@ -63,6 +64,21 @@ module Game =
     | Left 
     | Right 
     | Interact
+  module Entity =
+    let getImage = function
+      | Start _ -> None
+      | Item(i,_,_) -> Some i
+      | Room _ -> None
+      | Container (_ ,l )-> List.tryHead l
+      | Empty -> None
+  // module Model = 
+  //   let removeEntity (m: Model) (p: Position)= 
+  //     match m.level with
+  //     | Room (n, d , es) ->
+  //       m
+  //     | _ -> m
+
+
   module KeyEvent = 
     let fromOrientation = function
       |North -> Up
@@ -102,10 +118,29 @@ module Game =
         | _ -> p, o
 
       let i = 
-        let check = KeyEvent.fromOrientation o
-        
+        let rec tryGetItem e = 
+          match e with
+          | Start _ -> None
+          | Item (i,d,p) -> Some(Item(i,d,p))
+          | Room (_,_,l) ->
+            l |> List.choose tryGetItem 
+              |> List.tryHead
+          | Container _ -> None
+          | Empty -> None
+        let filterItem e = 
+          let checkPosition = KeyEvent.fromOrientation o |> move
+          match checkPosition, e with
+          | Some x, Item (i,d,p) -> x = p
+          | _  -> false
+        let item _ = 
+          tryGetItem level
+          |> Option.filter filterItem 
+          |> Option.bind Entity.getImage
+
         match keyEvent with
-        | Interact -> 'a' :: inventory
+        | Interact ->
+          //'s' :: inventory
+          Option.toList (item ()) @ inventory
         | _ -> inventory
       {model with player = p',o'; inventory = i}, Cmd.none
 
@@ -125,7 +160,7 @@ module Game =
 //type Msg = | TextInput of string | Move of char | Interact
 type Model = Game.Model
 
-let bedroom = Game.Room ("Bedroom", (4,4), [Game.Item ('s', "a sock", {x=0; y=0})])
+let bedroom = Game.Room ("Bedroom", (5,5), [Game.Item ('s', "a sock", {x=0; y=0})])
 let init () = { Game.name = ""; 
                 Game.player = {x = 0; y = 0}, Game.North; 
                 Game.inventory = []; 
