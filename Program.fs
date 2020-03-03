@@ -149,7 +149,8 @@ let update (msg:Terminal.Msg) (model: Model) =
         then newPosition, newOrientation 
         else player, orientation
       
-
+    //TODO write behavior for adding and removing items from containers
+    //TODO write behavior for dropping items
     let updateInventory model = 
       let isItem  = 
         function
