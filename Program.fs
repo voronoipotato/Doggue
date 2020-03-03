@@ -26,7 +26,7 @@ module Program =
       let rec setState' el = 
         match el with
         | Terminal.Dialog (t, f) ->
-          Console.WriteLine(t)
+          Console.Write(t)
           Console.ReadLine() |> f
         | Terminal.CharInput (f) -> 
           Console.ReadKey(true).KeyChar |> f
@@ -166,12 +166,13 @@ let update (msg:Terminal.Msg) (model: Model) =
 //Begin game
 
 
-let bedroom = ("Bedroom",{width=5;length=5}) //(5,5))
+let bedroom = ("Bedroom",{width=5;length=5})
 let init () = 
+  let initialPosition = {x = 0; y = 0}, North
   let sock = Item ('s', "a sock", {x=0; y=3})
   let cabinet = Container ('c', [], {x=1;y=1})
   { name = ""; 
-                player = {x = 0; y = 0}, North; 
+                player = initialPosition; 
                 inventory = []; 
                 level = bedroom;
                 entities = [sock; cabinet]}, Cmd.none
