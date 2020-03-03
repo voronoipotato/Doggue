@@ -9,10 +9,7 @@ module Terminal =
   type Msg = | TextInput of string | GameInput of char
   type OnString = (string -> unit)
   type OnChar = (char -> unit)
-  type Width = int
-  type Length = int
   type Position = {x: int; y: int}
-  type Dimensions = Width * Length
 
   type Item = char * Position
   type Header = string
@@ -150,7 +147,7 @@ let update (msg:Terminal.Msg) (model: Model) =
         else player, orientation
       
     //TODO write behavior for adding and removing items from containers
-    //TODO write behavior for dropping items
+    //TODO items should drop in front of doggo
     let updateInventory model = 
       let isItem  = 
         function
