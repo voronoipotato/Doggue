@@ -2,6 +2,9 @@
 
 open System
 open Elmish
+
+let inline K x _ = x
+
 module Terminal = 
   type Msg = | TextInput of string | GameInput of char
   type OnString = (string -> unit)
@@ -70,17 +73,6 @@ type Model = {  name : string;
                 inventory: Carryable list; 
                 level: Name * Dimensions;
                 entities: Entity list}
-type KeyEvent = 
-  | Up 
-  | Down 
-  | Left 
-  | Right 
-  | Interact
-
-let inline K x _ = x
-let toTerminalPosition p : Terminal.Position= 
-  {x=p.x; y=p.y}  
-
 module Model = 
   let removeItem (m: Model) (p: Position)= 
     let isItem = function 
@@ -93,6 +85,13 @@ module Model =
       
     {m with entities = filteredEntities}
 
+type KeyEvent = 
+  | Up 
+  | Down 
+  | Left 
+  | Right 
+  | Interact
+
 module KeyEvent = 
   let fromOrientation = function
     |North -> Up
@@ -100,27 +99,30 @@ module KeyEvent =
     |West  -> Left
     |South -> Down
 
+let toTerminalPosition p : Terminal.Position= 
+  {x=p.x; y=p.y}  
+
 let update (msg:Terminal.Msg) (model: Model) =
   let { name= name; 
         player = player, orientation; 
         inventory = inventory;
         level = level
-        entities = entities} = model
+        entities = entities } = model
 
   let {x=x; y=y} = player
 
   let updateInteraction keyEvent player =
     let move = function
-      | Up ->   Some {player with y = y - 1}
+      | Up   -> Some {player with y = y - 1}
       | Down -> Some {player with y = y + 1}
       | Left -> Some {player with x = x - 1}
       | Right ->Some {player with x = x + 1}
       | _ -> None
 
     let reorient  = function
-        | Up ->    Some North
-        | Down ->  Some South
-        | Left ->  Some West
+        | Up    -> Some North
+        | Down  -> Some South
+        | Left  -> Some West
         | Right -> Some East
         | _ -> None
 
@@ -177,8 +179,8 @@ let update (msg:Terminal.Msg) (model: Model) =
 //Begin game
 
 
-let bedroom = ("Bedroom",{width=5;length=5})
 let init () = 
+  let bedroom = ("Bedroom",{width=5;length=5})
   let initialPosition = {x = 0; y = 0}, North
   let sock = Item ('s', "a sock", {x=0; y=3})
   let cabinet = Container ('c', [], {x=1;y=1})
@@ -207,7 +209,7 @@ let view (model) dispatch =
         let buildGrid l = 
           l
           |> Seq.map buildRow 
-          |> Seq.reduce (fun acc n ->  sprintf "%s\n%s" acc n )
+          |> Seq.reduce (sprintf "%s\n%s")
         buildGrid [1..roomWidth] 
       Terminal.Screen (floorMat, el)
 
@@ -216,10 +218,13 @@ let view (model) dispatch =
     let entities el = 
       let getImageAndPosition = 
         function 
-        | Item (i,d,p) -> i,p
-        | Container (i,l,p) -> i,p
-      let entitiesToRender = entities |> List.map getImageAndPosition
-      let createElement acc (i,p) = Terminal.WriteAtPos(string i, toTerminalPosition p,acc)
+        | Item (i,_,p) -> i,p
+        | Container (i,_,p) -> i,p
+      let entitiesToRender = 
+        entities 
+        |> List.map getImageAndPosition
+      let createElement acc (i,p) = 
+        Terminal.WriteAtPos(string i, toTerminalPosition p,acc)
       
       entitiesToRender |> List.fold (createElement) el
     let inventory el = 
@@ -232,7 +237,7 @@ let view (model) dispatch =
         | inv -> 
             inv  
             |> Seq.map (getImageAndDescription >> displayImageAndDescription)
-            |> Seq.reduce (fun acc n ->  sprintf "%s, %s" acc n )
+            |> Seq.reduce (sprintf "%s, %s")
             |> sprintf "[%s]"
       Terminal.WriteAtPos(inv, displayPosition, el )
     character gameInput 
