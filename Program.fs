@@ -13,10 +13,11 @@ module Terminal =
 
   type Item = char * Position
   type Header = string
-  type Element =  | Screen of Header * Element
-                  | Dialog of Header * OnString
-                  | CharInput of OnChar
-                  | WriteAtPos of string * Position * Element
+  type Element =  
+    | Screen of Header * Element
+    | Dialog of Header * OnString
+    | CharInput of OnChar
+    | WriteAtPos of string * Position * Element
 
 module Program =
   let withTerminal program: Program<_,_,_,_> =
@@ -26,18 +27,18 @@ module Program =
       let rec setState' el = 
         match el with
         | Terminal.Dialog (t, f) ->
-          Console.Write(t)
-          Console.ReadLine() |> f
+            Console.Write(t)
+            Console.ReadLine() |> f
         | Terminal.CharInput (f) -> 
-          Console.ReadKey(true).KeyChar |> f
+            Console.ReadKey(true).KeyChar |> f
         | Terminal.WriteAtPos (s, p, el) ->
-          Console.SetCursorPosition(p.x,p.y)
-          Console.Write(s)
-          setState' el
+            Console.SetCursorPosition(p.x,p.y)
+            Console.Write(s)
+            setState' el
         | Terminal.Screen (s, el) ->
-          Console.Clear()
-          Console.WriteLine(s)
-          setState' el
+            Console.Clear()
+            Console.WriteLine(s)
+            setState' el
       setState' el
       ()
     program |> Program.withSetState setState
@@ -53,7 +54,7 @@ type Description = string
 type Carryable = Bauble of Image * Description
 module Carryable = 
   let getImage = function
-  | Bauble (i,d) -> i
+  | Bauble (i,_) -> i
 
 type Entity =   
   | Item of Image * Description * Position
@@ -61,7 +62,7 @@ type Entity =
 module Entity = 
   let getImage = function
     | Item(i,_,_) ->  i
-    | Container (i ,_ , _)-> i
+    | Container (i,_,_)-> i
 
 type Orientation = |North|East|West|South
 type Model = {  name : string; 
@@ -75,14 +76,21 @@ type KeyEvent =
   | Left 
   | Right 
   | Interact
+
+let inline K x _ = x
 let toTerminalPosition p : Terminal.Position= 
   {x=p.x; y=p.y}  
 
 module Model = 
   let removeItem (m: Model) (p: Position)= 
-    let isItem = function | Item (_,_,p') -> p' <> p  | _ -> true
+    let isItem = function 
+      | Item (_,_,p') -> p' <> p  
+      | _ -> true
     
-    let filteredEntities = m.entities |> List.filter isItem 
+    let filteredEntities = 
+      m.entities 
+      |> List.filter isItem 
+      
     {m with entities = filteredEntities}
 
 module KeyEvent = 
@@ -98,7 +106,9 @@ let update (msg:Terminal.Msg) (model: Model) =
         inventory = inventory;
         level = level
         entities = entities} = model
+
   let {x=x; y=y} = player
+
   let updateInteraction keyEvent player =
     let move = function
       | Up ->   Some {player with y = y - 1}
@@ -140,7 +150,8 @@ let update (msg:Terminal.Msg) (model: Model) =
         |> List.tryFind itemInPosition 
       let pickUp = function
           | Item (i,d,p)-> 
-            Model.removeItem {model with inventory = (Bauble (i,d)) :: inventory} p
+            let bauble = Bauble (i,d)
+            Model.removeItem {model with inventory = bauble :: inventory} p
           | _ -> model
       match keyEvent with
       | Interact ->
@@ -172,10 +183,10 @@ let init () =
   let sock = Item ('s', "a sock", {x=0; y=3})
   let cabinet = Container ('c', [], {x=1;y=1})
   { name = ""; 
-                player = initialPosition; 
-                inventory = []; 
-                level = bedroom;
-                entities = [sock; cabinet]}, Cmd.none
+    player = initialPosition; 
+    inventory = []; 
+    level = bedroom;
+    entities = [sock; cabinet]}, Cmd.none
 
 let view (model) dispatch =
   let { name = name;
@@ -188,34 +199,47 @@ let view (model) dispatch =
   let nameEntry = Terminal.Dialog ("Enter your name:", Terminal.TextInput >> dispatch)
   let map = 
     let floor el =  
-      let floor = 
-        let buildRow _ = [1..roomLength] |> Seq.map (fun _ -> ".") |> Seq.reduce (+)
-        [1..roomWidth] 
-        |> Seq.map buildRow 
-        |> Seq.reduce (fun acc n ->  sprintf "%s\n%s" acc n )
-      Terminal.Screen (floor, el)
+      let floorMat = 
+        let buildRow _ = 
+          [1..roomLength] 
+          |> Seq.map (K ".")
+          |> Seq.reduce (+)
+        let buildGrid l = 
+          l
+          |> Seq.map buildRow 
+          |> Seq.reduce (fun acc n ->  sprintf "%s\n%s" acc n )
+        buildGrid [1..roomWidth] 
+      Terminal.Screen (floorMat, el)
 
-    let gameInput =   Terminal.CharInput (Terminal.GameInput >> dispatch)
-    let character el = Terminal.WriteAtPos("d", toTerminalPosition pos, el)
+    let gameInput = Terminal.CharInput (Terminal.GameInput >> dispatch)
+    let character el = Terminal.WriteAtPos(doggo, toTerminalPosition pos, el)
     let entities el = 
       let getImageAndPosition = 
         function 
         | Item (i,d,p) -> i,p
         | Container (i,l,p) -> i,p
       let entitiesToRender = entities |> List.map getImageAndPosition
-      entitiesToRender 
-      |> List.fold (fun acc (i,p)  -> Terminal.WriteAtPos(string i, toTerminalPosition p,acc)) el
+      let createElement acc (i,p) = Terminal.WriteAtPos(string i, toTerminalPosition p,acc)
+      
+      entitiesToRender |> List.fold (createElement) el
     let inventory el = 
+      let displayPosition = toTerminalPosition {x= roomLength + 2; y = 0}
       let inv =
         let getImageAndDescription = function | Bauble (i,d) -> (i,d)
+        let displayImageAndDescription (i,d) = sprintf "%c: %s" i d
         match currentInventory with
         | [] -> "[]"
-        | inv -> inv  |> Seq.map (getImageAndDescription >> (fun (i,d) -> sprintf "%c: %s" i d))
-                  |> Seq.reduce (fun acc n ->  sprintf "%s, %s" acc n )
-                  |> sprintf "[%s]"
-      Terminal.WriteAtPos(inv, toTerminalPosition {x= roomLength + 2; y = 0}, el )
-    floor (inventory(entities (character gameInput)))
-  
+        | inv -> 
+            inv  
+            |> Seq.map (getImageAndDescription >> displayImageAndDescription)
+            |> Seq.reduce (fun acc n ->  sprintf "%s, %s" acc n )
+            |> sprintf "[%s]"
+      Terminal.WriteAtPos(inv, displayPosition, el )
+    character gameInput 
+    |> entities
+    |> inventory 
+    |> floor
+
   if model.name = "" then
     nameEntry
   else
