@@ -163,22 +163,28 @@ let update (msg:Terminal.Msg) (model: Model) =
         | Some x, Item (i,d,p) -> (x = p)
         | _  -> false
 
-      let item = 
+      let currentEntity = 
         entities
-        |> List.filter isItem 
-        |> List.tryFind itemInPosition 
-      let pickUp = function
-          | Item (i,d,p)-> 
+        |> List.tryFind itemInPosition
+
+      let pickUp = 
+        function
+          | Some (Item (i,d,p)) -> 
             let bauble = Bauble (i,d)
             match inventory with
             | Some _ -> model
             | None  -> Model.removeItem {model with inventory = Some bauble} p
-          | _ -> model
+          | Some (Container (i,d,p)) ->
+            //add code to fill container
+            {model with inventory = None}
+          | None -> 
+            match inventory with
+            | Some (Bauble (i,d)) ->{model with inventory = None; entities = (Item (i,d,player)) :: entities}
+            | None -> model
       match keyEvent with
       | Interact ->
-        item 
-        |> Option.map pickUp
-        |> Option.defaultValue model
+        currentEntity 
+        |> pickUp
       | _ -> model
     let updatedModel = updateInventory model
     {updatedModel with player = position,orientation}, Cmd.none
