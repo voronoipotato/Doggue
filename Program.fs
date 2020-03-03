@@ -87,7 +87,7 @@ module KeyEvent =
 
 type Model = {  name : string; 
                 player : Position * Orientation; 
-                inventory: Carryable list; 
+                inventory: Carryable option; 
                 level: Name * Dimensions;
                 entities: Entity list}
 module Model = 
@@ -170,7 +170,9 @@ let update (msg:Terminal.Msg) (model: Model) =
       let pickUp = function
           | Item (i,d,p)-> 
             let bauble = Bauble (i,d)
-            Model.removeItem {model with inventory = bauble :: inventory} p
+            match inventory with
+            | Some _ -> model
+            | None  -> Model.removeItem {model with inventory = Some bauble} p
           | _ -> model
       match keyEvent with
       | Interact ->
@@ -200,12 +202,13 @@ let init () =
   let bedroom = ("Bedroom",{width=5;length=5})
   let initialPosition = {x = 0; y = 0}, North
   let sock = Item ('s', "a sock", {x=0; y=3})
+  let sock' = Item ('s', "another sock", {x=2; y=3})
   let cabinet = Container ('c', [], {x=1;y=1})
   { name = ""; 
     player = initialPosition; 
-    inventory = []; 
+    inventory = None; 
     level = bedroom;
-    entities = [sock; cabinet]}, Cmd.none
+    entities = [sock; sock'; cabinet]}, Cmd.none
 
 let view (model) dispatch =
   let { name = name;
@@ -250,11 +253,10 @@ let view (model) dispatch =
         let getImageAndDescription = function | Bauble (i,d) -> (i,d)
         let displayImageAndDescription (i,d) = sprintf "%c: %s" i d
         match currentInventory with
-        | [] -> "[]"
-        | inv -> 
+        | None -> "[]"
+        | Some inv -> 
             inv  
-            |> Seq.map (getImageAndDescription >> displayImageAndDescription)
-            |> Seq.reduce (sprintf "%s, %s")
+            |> (getImageAndDescription >> displayImageAndDescription)
             |> sprintf "[%s]"
       Terminal.WriteAtPos(inv, displayPosition, el )
     character gameInput 
