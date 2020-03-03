@@ -42,19 +42,27 @@ module Program =
       ()
     program |> Program.withSetState setState
 
-type Width = int 
-type Length = int
+// type Width = int 
+// type Length = int
 type Position = {x: int; y: int}
 
-type Dimensions = Width * Length
+type Dimensions = {width: int; length: int} //Width * Length
 type Image = char
 type Name = string
 type Description = string
 type Carryable = Bauble of Image * Description
+module Carryable = 
+  let getImage = function
+  | Bauble (i,d) -> i
 
 type Entity =   
   | Item of Image * Description * Position
   | Container of Image * Carryable list * Position
+module Entity = 
+  let getImage = function
+    | Item(i,_,_) ->  i
+    | Container (i ,_ , _)-> i
+
 type Orientation = |North|East|West|South
 type Model = {  name : string; 
                 player : Position * Orientation; 
@@ -69,13 +77,7 @@ type KeyEvent =
   | Interact
 let toTerminalPosition p : Terminal.Position= 
   {x=p.x; y=p.y}  
-module Carryable = 
-  let getImage = function
-  | Bauble (i,d) -> i
-module Entity =
-  let getImage = function
-    | Item(i,_,_) ->  i
-    | Container (i ,_ , _)-> i
+
 module Model = 
   let removeItem (m: Model) (p: Position)= 
     let isItem = function | Item (_,_,p') -> p' <> p  | _ -> true
@@ -116,7 +118,7 @@ let update (msg:Terminal.Msg) (model: Model) =
       let p' = move keyEvent |> Option.defaultValue player
       let o' = reorient keyEvent |> Option.defaultValue orientation
       match level with 
-      | _ , (w,l) ->
+      | _ , {width=w;length=l} ->
         { x = min w p'.x |> max 0; 
           y = min l p'.y |> max 0 }, o'
 
@@ -164,19 +166,22 @@ let update (msg:Terminal.Msg) (model: Model) =
 //Begin game
 
 
-let bedroom = ("Bedroom", (5,5))
-let init () = { name = ""; 
+let bedroom = ("Bedroom",{width=5;length=5}) //(5,5))
+let init () = 
+  let sock = Item ('s', "a sock", {x=0; y=3})
+  let cabinet = Container ('c', [], {x=1;y=1})
+  { name = ""; 
                 player = {x = 0; y = 0}, North; 
                 inventory = []; 
                 level = bedroom;
-                entities = [Item ('s', "a sock", {x=0; y=3}); Container ('c', [], {x=1;y=1})]}, Cmd.none
+                entities = [sock; cabinet]}, Cmd.none
 
 let view (model) dispatch =
   let { name = name;
         player = pos, ori;
         inventory = currentInventory;
-        level = (roomName, (roomWidth, roomLength));
-        entities = entities} = model
+        level = (roomName, {width=roomWidth; length=roomLength} );
+        entities = entities } = model
   //pomeranian service dog
   let doggo = "d"
   let nameEntry = Terminal.Dialog ("Enter your name:", Terminal.TextInput >> dispatch)
