@@ -66,24 +66,10 @@ module Entity =
   let getImage = function
     | Item(i,_,_) ->  i
     | Container (i,_,_)-> i
-
+  let getPosition = function
+    |Item (_,_,p) -> p
+    | Container (_,_,p) -> p
 type Orientation = |North|East|West|South
-type Model = {  name : string; 
-                player : Position * Orientation; 
-                inventory: Carryable list; 
-                level: Name * Dimensions;
-                entities: Entity list}
-module Model = 
-  let removeItem (m: Model) (p: Position)= 
-    let isItem = function 
-      | Item (_,_,p') -> p' <> p  
-      | _ -> true
-    
-    let filteredEntities = 
-      m.entities 
-      |> List.filter isItem 
-      
-    {m with entities = filteredEntities}
 
 type KeyEvent = 
   | Up 
@@ -99,19 +85,35 @@ module KeyEvent =
     |West  -> Left
     |South -> Down
 
+type Model = {  name : string; 
+                player : Position * Orientation; 
+                inventory: Carryable list; 
+                level: Name * Dimensions;
+                entities: Entity list}
+module Model = 
+  let removeItem (m: Model) (p: Position)= 
+    let isItem = function 
+      | Item (_,_,p') -> p' <> p  
+      | _ -> true
+    
+    let filteredEntities = m.entities |> List.filter isItem 
+    {m with entities = filteredEntities}
+
+
 let toTerminalPosition p : Terminal.Position= 
   {x=p.x; y=p.y}  
 
 let update (msg:Terminal.Msg) (model: Model) =
   let { name= name; 
-        player = player, orientation; 
+        player = playerPosition, orientation; 
         inventory = inventory;
         level = level
         entities = entities } = model
 
-  let {x=x; y=y} = player
 
   let updateInteraction keyEvent player =
+    let {x=x; y=y} = player
+
     let move = function
       | Up   -> Some {player with y = y - 1}
       | Down -> Some {player with y = y + 1}
@@ -126,13 +128,27 @@ let update (msg:Terminal.Msg) (model: Model) =
         | Right -> Some East
         | _ -> None
 
+    //TODO: this should be a function
     let position,orientation =
-      let p' = move keyEvent |> Option.defaultValue player
-      let o' = reorient keyEvent |> Option.defaultValue orientation
-      match level with 
-      | _ , {width=w;length=l} ->
-        { x = min w p'.x |> max 0; 
-          y = min l p'.y |> max 0 }, o'
+      let _ , {width=w;length=l} = level
+      let fitToRoom p = { 
+          x = min w p.x |> max 0 
+          y = min l p.y |> max 0 }
+      let avoidObstacles newPosition =
+        entities 
+        |> List.map Entity.getPosition
+        |> List.contains newPosition
+        |> (fun hitObject -> if hitObject then player else newPosition )
+      let newPosition = 
+        move keyEvent 
+        |> Option.defaultValue player
+        |> fitToRoom
+        |> avoidObstacles
+      let newOrientation = reorient keyEvent |> Option.defaultValue orientation
+      if (newPosition <> player) 
+        then newPosition, newOrientation 
+        else player, orientation
+      
 
     let updateInventory model = 
       let isItem  = 
@@ -169,11 +185,11 @@ let update (msg:Terminal.Msg) (model: Model) =
     {model with name = newValue}, Cmd.none
   | Terminal.GameInput c ->
     match c with 
-    | 'w' -> updateInteraction Up player
-    | 'a' -> updateInteraction Left player
-    | 's' -> updateInteraction Down player
-    | 'd' -> updateInteraction Right player
-    | 'e' -> updateInteraction Interact player
+    | 'w' -> updateInteraction Up playerPosition
+    | 'a' -> updateInteraction Left playerPosition
+    | 's' -> updateInteraction Down playerPosition
+    | 'd' -> updateInteraction Right playerPosition
+    | 'e' -> updateInteraction Interact playerPosition
     | _ -> model , Cmd.none
 
 //Begin game
@@ -198,7 +214,7 @@ let view (model) dispatch =
         entities = entities } = model
   //pomeranian service dog
   let doggo = "d"
-  let nameEntry = Terminal.Dialog ("Enter your name:", Terminal.TextInput >> dispatch)
+  let nameEntry = Terminal.Dialog ("Enter your name: ", Terminal.TextInput >> dispatch)
   let map = 
     let floor el =  
       let floorMat = 
