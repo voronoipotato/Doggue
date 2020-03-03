@@ -132,8 +132,8 @@ let update (msg:Terminal.Msg) (model: Model) =
     let position,orientation =
       let _ , {width=w;length=l} = level
       let fitToRoom p = { 
-          x = min w p.x |> max 0 
-          y = min l p.y |> max 0 }
+          x = min (w-1) p.x |> max 0 
+          y = min (l-1) p.y |> max 0 }
       let avoidObstacles newPosition =
         entities 
         |> List.map Entity.getPosition
