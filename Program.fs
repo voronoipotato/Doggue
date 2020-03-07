@@ -16,12 +16,12 @@ module Terminal =
     | Screen of Header * Element
     | Dialog of Header * OnString
     | CharInput of OnChar
-    | WriteAtPos of string * Position * Element
+    | PositionWrite of string * Position * Element
 
 module Program =
   let withTerminal program: Program<_,_,_,_> =
     Console.CursorVisible <- false
-    let  setState model dispatch = 
+    let setState model dispatch = 
       let el = (Program.view program) model dispatch
       let rec setState' el = 
         match el with
@@ -30,7 +30,7 @@ module Program =
             Console.ReadLine() |> f
         | Terminal.CharInput (f) -> 
             Console.ReadKey(true).KeyChar |> f
-        | Terminal.WriteAtPos (s, p, el) ->
+        | Terminal.PositionWrite (s, p, el) ->
             Console.SetCursorPosition(p.x,p.y)
             Console.Write(s)
             setState' el
@@ -42,31 +42,41 @@ module Program =
       ()
     program |> Program.withSetState setState
 
-// type Width = int 
-// type Length = int
 type Msg = | Dialog of string | GameInput of char
 
 type Position = {x: int; y: int}
 
-type Dimensions = {width: int; length: int} //Width * Length
+type Dimensions = {width: int; length: int}
 type Image = char
 type Name = string
 type Description = string
 type Carryable = Bauble of Image * Description
-module Carryable = 
+
+type Entity =
+  | Item of Image * Description * Position
+  | Container of Image * Description * Carryable list * Position
+
+module Carryable =
   let getImage = function
   | Bauble (i,_) -> i
-
-type Entity =   
-  | Item of Image * Description * Position
-  | Container of Image * Carryable list * Position
+  let fromItem i =
+    match i with
+    | Item (i,d,p) -> Ok (Bauble (i,d))
+    | Container _ -> Error "you can't pick up a cabinet"
 module Entity = 
   let getImage = function
     | Item(i,_,_) ->  i
-    | Container (i,_,_)-> i
+    | Container (i,_,_,_) -> i
   let getPosition = function
-    |Item (_,_,p) -> p
-    | Container (_,_,p) -> p
+    | Item (_,_,p) -> p
+    | Container (_,_,_,p) -> p
+  let getDescription = function
+    | Item (_,d,_) -> d
+    | Container (_,d,_,_) -> d
+  let getImageAndPosition =
+    function
+    | Item (i,_,p) -> i,p
+    | Container (i,_,_,p) -> i,p
 type Orientation = |North|East|West|South
 
 type KeyEvent = 
@@ -89,13 +99,19 @@ type Model = {  name : string;
                 level: Name * Dimensions;
                 entities: Entity list}
 module Model = 
-  let removeItem (m: Model) (p: Position)= 
+  let pickUpItem (m: Model) (p: Position) c = 
     let isItem = function 
       | Item (_,_,p') -> p' <> p  
       | _ -> true
-    
     let filteredEntities = m.entities |> List.filter isItem 
-    {m with entities = filteredEntities}
+    {m with inventory=Some c;entities = filteredEntities}
+
+  let placeItem m p (c: Carryable) =
+    let (playerPosition,o) = m.player
+    if playerPosition <> p then
+      match c with 
+      | Bauble (i,d) ->  {m with inventory = None; entities = Item(i,d,p) :: m.entities}
+    else m
 
 
 let toTerminalPosition p : Terminal.Position= 
@@ -108,16 +124,16 @@ let update (msg:Msg) (model: Model) =
         level = level
         entities = entities } = model
 
-
   let updateInteraction keyEvent player =
     let {x=x; y=y} = player
+    let levelName, {width=w;length=l} = level
 
     let move = function
-      | Up   -> Some {player with y = y - 1}
-      | Down -> Some {player with y = y + 1}
-      | Left -> Some {player with x = x - 1}
-      | Right ->Some {player with x = x + 1}
-      | _ -> None
+      | Up   ->  {player with y = y - 1}
+      | Down ->  {player with y = y + 1}
+      | Left ->  {player with x = x - 1}
+      | Right -> {player with x = x + 1}
+      | _ -> player
 
     let reorient  = function
         | Up    -> Some North
@@ -125,28 +141,27 @@ let update (msg:Msg) (model: Model) =
         | Left  -> Some West
         | Right -> Some East
         | _ -> None
+    let fitToRoom p = { 
+      x = min (w-1) p.x |> max 0 
+      y = min (l-1) p.y |> max 0 }
 
     //TODO: this should be a function
-    let position,orientation =
-      let _ , {width=w;length=l} = level
-      let fitToRoom p = { 
-          x = min (w-1) p.x |> max 0 
-          y = min (l-1) p.y |> max 0 }
+    let updatePosition keyEvent position =
       let avoidObstacles newPosition =
         entities 
         |> List.map Entity.getPosition
         |> List.contains newPosition
         |> (fun hitObject -> if hitObject then player else newPosition )
+
       let newPosition = 
-        move keyEvent 
-        |> Option.defaultValue player
+        keyEvent
+        |> move  
         |> fitToRoom
         |> avoidObstacles
       let newOrientation = reorient keyEvent |> Option.defaultValue orientation
       if (newPosition <> player) 
-        then newPosition, newOrientation 
+        then newPosition, newOrientation
         else player, orientation
-      
     //TODO write behavior for adding and removing items from containers
     //TODO items should drop in front of doggo
     let updateInventory model = 
@@ -154,38 +169,38 @@ let update (msg:Msg) (model: Model) =
         function
         | Item _ -> true
         | _ -> false
-      let positionToCheck = KeyEvent.fromOrientation >> move
+      let positionToCheck = orientation |> (KeyEvent.fromOrientation >> move >> fitToRoom)
       let itemInPosition e = 
-        let checkPosition = positionToCheck orientation
-        match checkPosition, e with
-        | Some x, Item (i,d,p) -> (x = p)
+        match positionToCheck, e with
+        | x, Item (i,d,p) -> (x = p)
         | _  -> false
 
-      let currentEntity = 
-        entities
-        |> List.tryFind itemInPosition
-
+      let currentEntity = entities |> List.tryFind itemInPosition
+      let putDown =
+        match inventory, positionToCheck with
+            | Some (carryable), p -> 
+              Model.placeItem model p carryable
+              //{model with inventory = None; entities = (Item (image,description,p)) :: entities}
+            | None, _ -> model
       let pickUp = 
         function
-          | Some (Item (i,d,p)) -> 
-            let bauble = Bauble (i,d)
+          | Some (Item (image,description,position)) -> 
+            let bauble = Bauble (image,description)
             match inventory with
             | Some _ -> model
-            | None  -> Model.removeItem {model with inventory = Some bauble} p
-          | Some (Container (i,d,p)) ->
+            | None  -> Model.pickUpItem model position bauble
+          | Some (Container (i,d,l,p)) ->
             //add code to fill container
             {model with inventory = None}
           | None -> 
-            match inventory with
-            | Some (Bauble (i,d)) ->{model with inventory = None; entities = (Item (i,d,player)) :: entities}
-            | None -> model
+            putDown
       match keyEvent with
       | Interact ->
         currentEntity 
         |> pickUp
       | _ -> model
     let updatedModel = updateInventory model
-    {updatedModel with player = position,orientation}, Cmd.none
+    {updatedModel with player = (updatePosition keyEvent player)}, Cmd.none
 
   match msg with
   | Dialog newValue ->
@@ -207,10 +222,10 @@ let init () =
   let initialPosition = {x = 0; y = 0}, North
   let sock = Item ('s', "a sock", {x=0; y=3})
   let sock' = Item ('s', "another sock", {x=2; y=3})
-  let cabinet = Container ('c', [], {x=1;y=1})
-  { name = ""; 
-    player = initialPosition; 
-    inventory = None; 
+  let cabinet = Container ('c',"this ottoman reeks of old magazines",  [], {x=1;y=1})
+  { name = "";
+    player = initialPosition;
+    inventory = None;
     level = bedroom;
     entities = [sock; sock'; cabinet]}, Cmd.none
 
@@ -222,51 +237,56 @@ let view (model) dispatch =
         entities = entities } = model
   //pomeranian service dog
   let doggo = "d"
-  let nameEntry = Terminal.Dialog ("Enter your name: ", Dialog >> dispatch)
-  let map = 
-    let floor el =  
-      let floorMat = 
-        let buildRow _ = 
-          [1..roomLength] 
-          |> Seq.map (K ".")
-          |> Seq.reduce (+)
-        let buildGrid l = 
-          l
-          |> Seq.map buildRow 
-          |> Seq.reduce (sprintf "%s\n%s")
-        buildGrid [1..roomWidth] 
+  let ahead = 
+    match ori with
+      | North   ->  {pos with y = pos.y - 1}
+      | South ->  {pos with y = pos.y + 1}
+      | West ->  {pos with x = pos.x - 1}
+      | East -> {pos with x = pos.x + 1}
+  let map =
+    let floor el = 
+      let floorMat =
+        let buildRow _ = [1 .. roomLength] |> Seq.map (K ".") |> Seq.reduce (+)
+        let buildGrid l = l |> Seq.map buildRow |> Seq.reduce (sprintf "%s\n%s")
+        buildGrid [1..roomWidth]
       Terminal.Screen (floorMat, el)
 
     let gameInput = Terminal.CharInput (GameInput >> dispatch)
-    let character el = Terminal.WriteAtPos(doggo, toTerminalPosition pos, el)
-    let entities el = 
-      let getImageAndPosition = 
-        function 
-        | Item (i,_,p) -> i,p
-        | Container (i,_,p) -> i,p
-      let entitiesToRender = 
-        entities 
-        |> List.map getImageAndPosition
-      let createElement acc (i,p) = 
-        Terminal.WriteAtPos(string i, toTerminalPosition p,acc)
-      
+    let character el = Terminal.PositionWrite(doggo, toTerminalPosition pos, el)
+
+    let showEntities el =
+      let entitiesToRender = entities |> List.map Entity.getImageAndPosition
+      let createElement acc (i,p) =
+        Terminal.PositionWrite(string i, toTerminalPosition p,acc)
       entitiesToRender |> List.fold (createElement) el
-    let inventory el = 
+    let showInventory el =
       let displayPosition = toTerminalPosition {x= roomLength + 2; y = 0}
       let inv =
         let getImageAndDescription = function | Bauble (i,d) -> (i,d)
         let displayImageAndDescription (i,d) = sprintf "%c: %s" i d
         match currentInventory with
         | None -> "[]"
-        | Some inv -> 
-            inv  
+        | Some inv ->
+            inv
             |> (getImageAndDescription >> displayImageAndDescription)
             |> sprintf "[%s]"
-      Terminal.WriteAtPos(inv, displayPosition, el )
-    character gameInput 
-    |> entities
-    |> inventory 
-    |> floor
+      Terminal.PositionWrite(inv, displayPosition, el )
+    let information el = 
+      let filterEntities (e: Entity) =
+        let p = ahead
+        match e with
+        | Item(i,d,p') -> p = p'
+        | Container (i,d,l,p') -> p=p'
+      let desc = 
+        entities 
+        |> List.filter filterEntities
+        |> List.map (Entity.getDescription)
+        |> List.tryHead
+      let message = desc |> Option.defaultValue ""
+      Terminal.PositionWrite(sprintf "Description: %s" message, toTerminalPosition {x= roomLength + 2; y = 1},el )
+    character gameInput |> showEntities |> showInventory |> information |> floor
+
+  let nameEntry = Terminal.Dialog ("Enter your name: ", Dialog >> dispatch)
 
   if model.name = "" then
     nameEntry
