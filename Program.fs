@@ -6,7 +6,6 @@ open Elmish
 let inline K x _ = x
 
 module Terminal = 
-  type Msg = | TextInput of string | GameInput of char
   type OnString = (string -> unit)
   type OnChar = (char -> unit)
   type Position = {x: int; y: int}
@@ -45,6 +44,8 @@ module Program =
 
 // type Width = int 
 // type Length = int
+type Msg = | Dialog of string | GameInput of char
+
 type Position = {x: int; y: int}
 
 type Dimensions = {width: int; length: int} //Width * Length
@@ -100,7 +101,7 @@ module Model =
 let toTerminalPosition p : Terminal.Position= 
   {x=p.x; y=p.y}  
 
-let update (msg:Terminal.Msg) (model: Model) =
+let update (msg:Msg) (model: Model) =
   let { name= name; 
         player = playerPosition, orientation; 
         inventory = inventory;
@@ -187,9 +188,9 @@ let update (msg:Terminal.Msg) (model: Model) =
     {updatedModel with player = position,orientation}, Cmd.none
 
   match msg with
-  | Terminal.TextInput newValue ->
+  | Dialog newValue ->
     {model with name = newValue}, Cmd.none
-  | Terminal.GameInput c ->
+  | GameInput c ->
     match c with 
     | 'w' -> updateInteraction Up playerPosition
     | 'a' -> updateInteraction Left playerPosition
@@ -221,7 +222,7 @@ let view (model) dispatch =
         entities = entities } = model
   //pomeranian service dog
   let doggo = "d"
-  let nameEntry = Terminal.Dialog ("Enter your name: ", Terminal.TextInput >> dispatch)
+  let nameEntry = Terminal.Dialog ("Enter your name: ", Dialog >> dispatch)
   let map = 
     let floor el =  
       let floorMat = 
@@ -236,7 +237,7 @@ let view (model) dispatch =
         buildGrid [1..roomWidth] 
       Terminal.Screen (floorMat, el)
 
-    let gameInput = Terminal.CharInput (Terminal.GameInput >> dispatch)
+    let gameInput = Terminal.CharInput (GameInput >> dispatch)
     let character el = Terminal.WriteAtPos(doggo, toTerminalPosition pos, el)
     let entities el = 
       let getImageAndPosition = 
